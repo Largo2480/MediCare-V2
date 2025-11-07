@@ -72,7 +72,7 @@
 
           <div class="md:col-span-2">
             <label for="photo" class="block text-sm font-medium text-gray-700">Lien Photo (URL):</label>
-            <input type="text" id="photo" placeholder="Ex: https://monsite.com/img/dr_dupont.jpg"
+            <input type="file" id="photo" placeholder="Ex: https://monsite.com/img/dr_dupont.jpg"
               class="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 border focus:border-blue-500 focus:ring-blue-500">
           </div>
 
@@ -120,6 +120,223 @@
       </div>
     </section>
   </main>
+  <script>
+    
+
+(() => {
+  
+  const form = document.getElementById('medecin-form');
+  const nomInput = document.getElementById('nom');
+  const specialiteInput = document.getElementById('specialite');
+  const photoInput = document.getElementById('photo');
+  const descriptionInput = document.getElementById('description');
+  const medecinIdInput = document.getElementById('medecin-id');
+  const submitBtn = document.getElementById('submit-btn');
+  const medecinsTableBody = document.querySelector('#medecins-list tbody');
+
+  const STORAGE_KEY = 'medecins_data_v1';
+
+  
+  let currentPhotoDataURL = null;
+
+  function loadMedecins() {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return [];
+    try {
+      return JSON.parse(raw);
+    } catch (e) {
+      console.error('Erreur parsing medecins:', e);
+      return [];
+    }
+  }
+
+  function saveMedecins(list) {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(list));
+  }
+
+  function render() {
+    const list = loadMedecins();
+    medecinsTableBody.innerHTML = '';
+
+    if (list.length === 0) {
+      const tr = document.createElement('tr');
+      tr.className = 'hover:bg-gray-50';
+      tr.innerHTML = `<td class="px-6 py-4 text-sm text-gray-500" colspan="4">Pas de médecins enregistrés.</td>`;
+      medecinsTableBody.appendChild(tr);
+      return;
+    }
+
+    list.forEach((m) => {
+      const tr = document.createElement('tr');
+      tr.className = 'hover:bg-gray-50';
+
+      const nameTd = document.createElement('td');
+      nameTd.className = 'px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 flex items-center gap-3';
+      const img = document.createElement('img');
+      img.alt = m.nom;
+      img.className = 'w-10 h-10 rounded-full object-cover';
+      img.src = m.photo || 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="80" height="80"><rect width="100%" height="100%" fill="%23e5e7eb"/><text x="50%" y="55%" dominant-baseline="middle" text-anchor="middle" fill="%23979ca6" font-size="26">Dr</text></svg>';
+      const span = document.createElement('span');
+      span.textContent = m.nom;
+      nameTd.appendChild(img);
+      nameTd.appendChild(span);
+
+      const specTd = document.createElement('td');
+      specTd.className = 'px-6 py-4 whitespace-nowrap text-sm text-gray-500 hidden sm:table-cell';
+      specTd.textContent = m.specialite;
+
+      const descTd = document.createElement('td');
+      descTd.className = 'px-6 py-4 text-sm text-gray-500 hidden md:table-cell';
+      descTd.textContent = m.description.length > 80 ? m.description.slice(0, 80) + '…' : m.description;
+
+      
+      const actionsTd = document.createElement('td');
+      actionsTd.className = 'px-6 py-4 whitespace-nowrap text-center text-sm font-medium space-x-2';
+
+      const editBtn = document.createElement('button');
+      editBtn.className = 'text-indigo-600 hover:text-indigo-900 px-3 py-1 rounded-full bg-indigo-50/50 hover:bg-indigo-100 transition';
+      editBtn.textContent = 'Modifier';
+      editBtn.addEventListener('click', () => startEdit(m.id));
+
+      const delBtn = document.createElement('button');
+      delBtn.className = 'text-red-600 hover:text-red-900 px-3 py-1 rounded-full bg-red-50/50 hover:bg-red-100 transition';
+      delBtn.textContent = 'Supprimer';
+      delBtn.addEventListener('click', () => removeMedecin(m.id));
+
+      actionsTd.appendChild(editBtn);
+      actionsTd.appendChild(delBtn);
+
+      tr.appendChild(nameTd);
+      tr.appendChild(specTd);
+      tr.appendChild(descTd);
+      tr.appendChild(actionsTd);
+
+      medecinsTableBody.appendChild(tr);
+    });
+  }
+
+  form.addEventListener('submit', (e) => {
+    e.preventDefault();
+
+    const nom = nomInput.value.trim();
+    const specialite = specialiteInput.value;
+    const description = descriptionInput.value.trim();
+    const editingId = medecinIdInput.value;
+
+    if (!nom) {
+      alert('Le nom est requis.');
+      return;
+    }
+    if (!description) {
+      alert('La description est requise.');
+      return;
+    }
+
+    const list = loadMedecins();
+
+    if (editingId) {
+      
+      const idx = list.findIndex((it) => String(it.id) === String(editingId));
+      if (idx === -1) {
+        alert('Médecin introuvable pour modification.');
+        resetForm();
+        return;
+      }
+      
+      const existingPhoto = list[idx].photo || null;
+      list[idx] = {
+        ...list[idx],
+        nom,
+        specialite,
+        description,
+        photo: currentPhotoDataURL || existingPhoto,
+      };
+      saveMedecins(list);
+      alert('Médecin modifié avec succès.');
+    } else {
+      
+      const newMed = {
+        id: Date.now(),
+        nom,
+        specialite,
+        description,
+        photo: currentPhotoDataURL || null,
+      };
+      list.push(newMed);
+      saveMedecins(list);
+      alert('Médecin ajouté avec succès.');
+    }
+
+    resetForm();
+    render();
+  });
+
+  
+  photoInput.addEventListener('change', (e) => {
+    const file = e.target.files && e.target.files[0];
+    if (!file) {
+      currentPhotoDataURL = null;
+      return;
+    }
+    
+    if (!file.type.startsWith('image/')) {
+      alert('Veuillez sélectionner une image.');
+      photoInput.value = '';
+      currentPhotoDataURL = null;
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = function (ev) {
+      currentPhotoDataURL = ev.target.result;
+    };
+    reader.readAsDataURL(file);
+  });
+
+
+  function startEdit(id) {
+    const list = loadMedecins();
+    const med = list.find((m) => String(m.id) === String(id));
+    if (!med) return alert('Médecin non trouvé.');
+
+    medecinIdInput.value = med.id;
+    nomInput.value = med.nom;
+    specialiteInput.value = med.specialite;
+    descriptionInput.value = med.description;
+    currentPhotoDataURL = med.photo || null;
+    submitBtn.textContent = 'Enregistrer les modifications';
+
+    form.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
+
+  
+  function removeMedecin(id) {
+    if (!confirm('Voulez-vous vraiment supprimer ce médecin ?')) return;
+    const list = loadMedecins();
+    const newList = list.filter((m) => String(m.id) !== String(id));
+    saveMedecins(newList);
+    render();
+  }
+
+  function resetForm() {
+    form.reset();
+    medecinIdInput.value = '';
+    currentPhotoDataURL = null;
+    submitBtn.textContent = 'Ajouter le médecin';
+  }
+
+  document.addEventListener('DOMContentLoaded', () => {
+    render();
+  });
+
+  window._medecinsApp = {
+    loadMedecins,
+    saveMedecins,
+    render,
+    resetForm,
+  };
+})();
+
+  </script>
 
 </body>
 </html>
